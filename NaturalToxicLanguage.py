@@ -63,29 +63,43 @@ def createFeatures(train_data):
 	toxic_data['numberOfWords'] = toxic_data['Comments'].apply(lambda x: len(x.split()))
 	return toxic_data
 
+def createFeaturesForTest(test_data):
+	toxic_data = pd.DataFrame()
+	toxic_data['Comments'] = test_data.loc[:,'comment_text']
+	print(toxic_data['Comments'].head(10))
+	toxic_data['NumberOfSentences'] = toxic_data['Comments'].apply(lambda x: len(re.findall('\n',str(x.strip())))+1)
+	toxic_data['MeanLengthOfSentences'] = toxic_data['Comments'].apply(lambda x: np.mean([len(w) for w in x.strip().split("\n")]))
+	toxic_data['MeanLengthOfWords'] = toxic_data['Comments'].apply(lambda x: np.mean([len(w) for w in x.strip().split(" ")]))
+	toxic_data['NumberOfUniqueWords'] = toxic_data['Comments'].apply(lambda x: len(set(x.split())))
+	toxic_data['numberOfWords'] = toxic_data['Comments'].apply(lambda x: len(x.split()))
+	return toxic_data
 
 
 train_data = pd.read_csv('./jigsaw-toxic-comment-classification-challenge/train.csv', sep = ',', header = 0)
 #train_data['comment_text'].fillna('unknown', inplace = True)
-#test_data = pd.read_csv('./jigsaw-toxic-comment-classification-challenge/test.csv', sep = ',', header = 0)
+test_data = pd.read_csv('./jigsaw-toxic-comment-classification-challenge/test.csv', sep = ',', header = 0)
 
 stopwordsList = set(stopwords.words('english'))
 lemmatizer = WordNetLemmatizer()
 
-#toxic_data_read = createFeatures(train_data)
+toxic_data_read = createFeatures(train_data)
 #toxic_data_read.to_csv('IntermediateDataFrame.csv', sep = ',', header = True)
-toxic_data_read = pd.read_csv('./IntermediateDataFrame.csv', sep = ',', header = 0)
-#toxic_data_read_test = featureEngineer(test_data)
-#toxic_data_read_test.to_csv('IntermediateDataFrameTest.csv', sep = ',', header = True)
+test_data_read = createFeaturesForTest(test_data)
+#test_data_read.to_csv('IntermediateDataFrameTest.csv', sep = ',', header = True)
+#toxic_data_read = pd.read_csv('./IntermediateDataFrame.csv', sep = ',', header = 0)
 
+toxic_data_features = featureEngineer(toxic_data_read)
+test_data_features = featureEngineer(test_data_read)
+#test_data.to_csv('CompletedFeaturesTest.csv', sep = ',', header = True)
 #toxic_data = featureEngineer(toxic_data_read)
 #toxic_data.to_csv('CompletedFeatures.csv', sep = ',', header = True)
 #toxic_data_test_newFeatures = createFeatures(toxic_data_read_test)
 #toxic_data_test_newFeatures.to_csv('CompletedFeaturesTest.csv', sep = ',', header = True)
 
-toxic_data_features = pd.read_csv('./CompletedFeatures.csv', sep = ',', header = 0)
+#toxic_data_features = pd.read_csv('./CompletedFeatures.csv', sep = ',', header = 0)
 
-toxic_data = toxic_data_features.sample(n=50000).dropna(subset = ['RemovedStopWords'])
+toxic_data = toxic_data_features.sample(n=20000).dropna(subset = ['RemovedStopWords'])
+test_data = test_data_features.sample(n=10000).dropna(subset = ['RemovedStopWords'])
 # empty_string = ''
 # for i in toxic_data['RemovedStopWords']:
 # 	empty_string = empty_string.strip() + ' ' + i.strip()
@@ -95,16 +109,19 @@ toxic_data = toxic_data_features.sample(n=50000).dropna(subset = ['RemovedStopWo
 # wordcloud = WordCloud(width = 900, height = 900,
 #                 background_color ='white',
 #                 min_font_size = 10).generate(empty_string)
-
+concatenatedComments = pd.concat([toxic_data['RemovedStopWords'], test_data['RemovedStopWords']])
 vectorizer = TfidfVectorizer(min_df = 30,strip_accents = 'unicode', analyzer = 'word',token_pattern=r'\w{1,}',ngram_range = (1,3), stop_words = 'english', sublinear_tf = True, max_features = 40000)
-X = vectorizer.fit_transform(toxic_data['RemovedStopWords'])
-print('Length of features', len(vectorizer.get_feature_names()))
-train_ngrams = vectorizer.transform(toxic_data['RemovedStopWords'])
+multipleWordAnalyzer = vectorizer.fit(concatenatedComments)
+train_ngrams = multipleWordAnalyzer.transform(toxic_data['RemovedStopWords'])
+print('Shape of Train', train_ngrams.shape)
+test_ngrams = multipleWordAnalyzer.transform(test_data['RemovedStopWords'])
+print('Shape of Test', test_ngrams.shape)
+
 
 wordVectorizer = TfidfVectorizer(strip_accents = 'unicode', analyzer = 'char', ngram_range = (2,6) , stop_words = 'english', sublinear_tf = True, max_features = 10000)
-Y = wordVectorizer.fit_transform(toxic_data['RemovedStopWords'])
-print('Length of one word features', len(wordVectorizer.get_feature_names()))
-train_1grams = wordVectorizer.transform(toxic_data['RemovedStopWords'])
+charAnalyzer = wordVectorizer.fit(concatenatedComments)
+train_1grams = charAnalyzer.transform(toxic_data['RemovedStopWords'])
+test_1grams = charAnalyzer.transform(test_data['RemovedStopWords'])
 
 # print(type(train_ngrams))
 # print(np.shape(train_ngrams))
@@ -118,7 +135,9 @@ testingColumns = ['ToxicClassResult','SevereToxicClassResult','ObsceneToxicClass
 
 # print(type(train_1grams))
 trainingFeatures = hstack((toxic_data[trainingColumns],train_ngrams, train_1grams)).tocsr()
+testingFeatures = hstack((test_data[trainingColumns],test_ngrams, test_1grams)).tocsr()
 trainingFeatureDataFrame = pd.DataFrame(trainingFeatures.toarray())
+testingFeatureDataFrame = pd.DataFrame(testingFeatures.toarray())
 
 X, y = trainingFeatureDataFrame, toxic_data[testingColumns]
 
@@ -133,9 +152,10 @@ for testColumns in testingColumns:
 	SupportVectorModel = SVC(kernel = 'rbf', C = 0.1, cache_size = 10000.0, decision_function_shape = 'ovo')
 	FittedSVModel = SupportVectorModel.fit(X_train, Y_train[testColumns])
 	crossValidationScoreforSV = cross_val_score(SupportVectorModel, X_train, Y_train[testColumns], cv = 5)
-
+	testingFeatureDataFrame[testColumns] = FittedSVModel.preditct(testingFeatureDataFrame)
 	print('Cross Validation Score Support Vector', crossValidationScoreforSV, np.mean(crossValidationScoreforSV))
 
+testingFeatureDataFrame.to_csv('PredictedValue.csv', sep = ',', header = True)
 # plot the WordCloud image                        
 # plt.figure(figsize = (8, 8), facecolor = None)
 # plt.imshow(wordcloud)
