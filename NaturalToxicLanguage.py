@@ -46,6 +46,20 @@ def featureEngineer(toxic_data):
 	toxic_data['RemovedStopWords'] = toxic_data['RemovedStopWords'].apply(lambda x: re.sub('\s+', ' ', str(x).strip()))
 	return toxic_data
 
+def createVisualization(train_data, outputCol):
+	VisualizationDataFrame = pd.DataFrame()
+	outputList = []
+	uniqueOutputCol = train_data[outputCol].unique()
+	for j in uniqueOutputCol:
+		interValue = np.where((train_data[outputCol] == j))
+		outputList.append(np.count_nonzero(interValue))
+	VisualizationDataFrame['Y Label'] = pd.Series(outputList)
+	plt.hist(VisualizationDataFrame['Y Label'], color = 'green')
+	plt.xlabel(outputCol, fontsize=10)
+	plt.ylabel('Count of '+outputCol, fontsize=10)
+	plt.title('Number of Successful or Unsuccessful Shots based on '+inputCol)
+	plt.show()
+
 def createFeatures(train_data):
 	toxic_data = pd.DataFrame()
 	toxic_data['Comments'] = train_data.loc[:,'comment_text']
@@ -99,7 +113,9 @@ test_data_features = featureEngineer(test_data_read)
 #toxic_data_features = pd.read_csv('./CompletedFeatures.csv', sep = ',', header = 0)
 
 toxic_data = toxic_data_features.sample(n=20000).dropna(subset = ['RemovedStopWords'])
-test_data = test_data_features.sample(n=10000).dropna(subset = ['RemovedStopWords'])
+test_data = test_data_features.sample(n=1000).dropna(subset = ['RemovedStopWords'])
+print('Shape of Test Data', test_data.shape)
+createVisualization(toxic_data, 'ToxicClassResult')
 # empty_string = ''
 # for i in toxic_data['RemovedStopWords']:
 # 	empty_string = empty_string.strip() + ' ' + i.strip()
@@ -139,6 +155,8 @@ testingFeatures = hstack((test_data[trainingColumns],test_ngrams, test_1grams)).
 trainingFeatureDataFrame = pd.DataFrame(trainingFeatures.toarray())
 testingFeatureDataFrame = pd.DataFrame(testingFeatures.toarray())
 
+print(testingFeatureDataFrame.shape)
+
 X, y = trainingFeatureDataFrame, toxic_data[testingColumns]
 
 X_train, X_test, Y_train, Y_test = model_selection.train_test_split(X, y, test_size = 0.33)
@@ -151,11 +169,12 @@ X_train, X_test, Y_train, Y_test = model_selection.train_test_split(X, y, test_s
 for testColumns in testingColumns:
 	SupportVectorModel = SVC(kernel = 'rbf', C = 0.1, cache_size = 10000.0, decision_function_shape = 'ovo')
 	FittedSVModel = SupportVectorModel.fit(X_train, Y_train[testColumns])
-	crossValidationScoreforSV = cross_val_score(SupportVectorModel, X_train, Y_train[testColumns], cv = 5)
-	testingFeatureDataFrame[testColumns] = FittedSVModel.preditct(testingFeatureDataFrame)
-	print('Cross Validation Score Support Vector', crossValidationScoreforSV, np.mean(crossValidationScoreforSV))
+	#crossValidationScoreforSV = cross_val_score(SupportVectorModel, X_train, Y_train[testColumns], cv = 5)
+	test_data[testColumns] = FittedSVModel.predict(trainingFeatureDataFrame)
+	print(FittedSVModel.predict(testingFeatureDataFrame))
+	#print('Cross Validation Score Support Vector', crossValidationScoreforSV, np.mean(crossValidationScoreforSV))
 
-testingFeatureDataFrame.to_csv('PredictedValue.csv', sep = ',', header = True)
+test_data.to_csv('PredictedValue.csv', sep = ',', header = True)
 # plot the WordCloud image                        
 # plt.figure(figsize = (8, 8), facecolor = None)
 # plt.imshow(wordcloud)
