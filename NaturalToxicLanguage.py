@@ -15,6 +15,7 @@ import re
 from gensim.models import Word2Vec
 from numba import jit
 from scipy.sparse import hstack
+from imblearn.under_sampling import NearMiss
 
 def reduce_lengthening(text):
     pattern = re.compile(r"(.)\1{2,}")
@@ -57,7 +58,6 @@ def createVisualization(train_data, outputCol):
 	plt.hist(VisualizationDataFrame['Y Label'], color = 'green')
 	plt.xlabel(outputCol, fontsize=10)
 	plt.ylabel('Count of '+outputCol, fontsize=10)
-	plt.title('Number of Successful or Unsuccessful Shots based on '+inputCol)
 	plt.show()
 
 def createFeatures(train_data):
@@ -115,7 +115,19 @@ test_data_features = featureEngineer(test_data_read)
 toxic_data = toxic_data_features.sample(n=20000).dropna(subset = ['RemovedStopWords'])
 test_data = test_data_features.sample(n=1000).dropna(subset = ['RemovedStopWords'])
 print('Shape of Test Data', test_data.shape)
-createVisualization(toxic_data, 'ToxicClassResult')
+print('Shape of Train Data', toxic_data.shape)
+plt.hist(toxic_data['ToxicClassResult'], color = 'green')
+plt.show()
+plt.hist(toxic_data['SevereToxicClassResult'], color = 'green')
+plt.show()
+plt.hist(toxic_data['ObsceneToxicClassResult'], color = 'green')
+plt.show()
+plt.hist(toxic_data['ThreatToxicClassResult'], color = 'green')
+plt.show()
+plt.hist(toxic_data['InsultToxicClassResult'], color = 'green')
+plt.show()
+plt.hist(toxic_data['IdentityHateToxicClassResult'], color = 'green')
+plt.show()
 # empty_string = ''
 # for i in toxic_data['RemovedStopWords']:
 # 	empty_string = empty_string.strip() + ' ' + i.strip()
@@ -155,26 +167,43 @@ testingFeatures = hstack((test_data[trainingColumns],test_ngrams, test_1grams)).
 trainingFeatureDataFrame = pd.DataFrame(trainingFeatures.toarray())
 testingFeatureDataFrame = pd.DataFrame(testingFeatures.toarray())
 
-print(testingFeatureDataFrame.shape)
+print(trainingFeatureDataFrame.shape)
 
 X, y = trainingFeatureDataFrame, toxic_data[testingColumns]
 
 X_train, X_test, Y_train, Y_test = model_selection.train_test_split(X, y, test_size = 0.33)
 
-# LogisticModel = LogisticRegression(C = 0.1, penalty = 'elasticnet', solver = 'saga', l1_ratio = 0.5)
-# FitteddLogistic = LogisticModel.fit(X_train, Y_train)
-# crossValidationScore = cross_val_score(LogisticModel, X_train, Y_train, cv = 5, scoring = 'roc_auc')
+Y_train_underSampled = pd.DataFrame()
+Nr = NearMiss()
+for j in testingColumns:
 
-# print('crossValidationScore', crossValidationScore, np.mean(crossValidationScore))
-for testColumns in testingColumns:
+	X_train_underSampledList, Y_train_underSampled_List = Nr.fit_sample(X_train, Y_train[j].ravel())
+	Y_train_underSampled[j] = pd.Series(Y_train_underSampled_List)
+	print("After Undersampling, counts of label 'Toxic Class': {}".format(sum(Y_train_underSampled[j] == 1)))
+	print("After Undersampling, counts of label 'Toxic Class': {}".format(sum(Y_train_underSampled[j] == 0)))
 	SupportVectorModel = SVC(kernel = 'rbf', C = 0.1, cache_size = 10000.0, decision_function_shape = 'ovo')
-	FittedSVModel = SupportVectorModel.fit(X_train, Y_train[testColumns])
-	#crossValidationScoreforSV = cross_val_score(SupportVectorModel, X_train, Y_train[testColumns], cv = 5)
-	test_data[testColumns] = FittedSVModel.predict(trainingFeatureDataFrame)
-	print(FittedSVModel.predict(testingFeatureDataFrame))
-	#print('Cross Validation Score Support Vector', crossValidationScoreforSV, np.mean(crossValidationScoreforSV))
+	FittedSVModel = SupportVectorModel.fit(X_train_underSampledList, Y_train_underSampled[j])
+	crossValidationScoreforSV = cross_val_score(SupportVectorModel, X_train_underSampledList, Y_train_underSampled[j], cv = 5)
+	print('Cross Validation Score Support Vector', crossValidationScoreforSV, np.mean(crossValidationScoreforSV))
 
-test_data.to_csv('PredictedValue.csv', sep = ',', header = True)
+#print(Y_train.shape)
+print("Before Undersampling, counts of label 'Toxic Class': {}".format(sum(Y_train['ToxicClassResult'] == 1)))
+print("Before Undersampling, counts of label 'Severe Toxic Class': {}".format(sum(Y_train['SevereToxicClassResult'] == 1)))
+print("Before Undersampling, counts of label 'Obscene Toxic Class': {}".format(sum(Y_train['ObsceneToxicClassResult'] == 1)))
+print("Before Undersampling, counts of label 'Threat Class': {}".format(sum(Y_train['ThreatToxicClassResult'] == 1)))
+print("Before Undersampling, counts of label 'Insult Class': {}".format(sum(Y_train['InsultToxicClassResult'] == 1)))
+print("Before Undersampling, counts of label 'Identity Hate Class': {}".format(sum(Y_train['IdentityHateToxicClassResult'] == 1)))
+
+
+# for testColumns in testingColumns:
+# 	SupportVectorModel = SVC(kernel = 'rbf', C = 0.1, cache_size = 10000.0, decision_function_shape = 'ovo')
+# 	FittedSVModel = SupportVectorModel.fit(X_train, Y_train[testColumns])
+# 	#crossValidationScoreforSV = cross_val_score(SupportVectorModel, X_train, Y_train[testColumns], cv = 5)
+# 	#train_data[testColumns] = FittedSVModel.predict(trainingFeatureDataFrame)
+# 	print(FittedSVModel.predict(trainingFeatureDataFrame))
+# 	#print('Cross Validation Score Support Vector', crossValidationScoreforSV, np.mean(crossValidationScoreforSV))
+
+#train_data.to_csv('PredictedValue.csv', sep = ',', header = True)
 # plot the WordCloud image                        
 # plt.figure(figsize = (8, 8), facecolor = None)
 # plt.imshow(wordcloud)
