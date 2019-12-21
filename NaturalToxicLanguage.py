@@ -16,6 +16,7 @@ from gensim.models import Word2Vec
 from numba import jit
 from scipy.sparse import hstack
 from imblearn.under_sampling import NearMiss
+from imblearn.over_sampling import SMOTE
 
 def reduce_lengthening(text):
     pattern = re.compile(r"(.)\1{2,}")
@@ -172,17 +173,20 @@ print(trainingFeatureDataFrame.shape)
 X, y = trainingFeatureDataFrame, toxic_data[testingColumns]
 
 X_train, X_test, Y_train, Y_test = model_selection.train_test_split(X, y, test_size = 0.33)
-
+X_train = X_train.dropna()
 Y_train_underSampled = pd.DataFrame()
 Nr = NearMiss()
 for j in testingColumns:
 
 	X_train_underSampledList, Y_train_underSampled_List = Nr.fit_sample(X_train, Y_train[j].ravel())
 	Y_train_underSampled[j] = pd.Series(Y_train_underSampled_List)
-	print("After Undersampling, counts of label 'Toxic Class': {}".format(sum(Y_train_underSampled[j] == 1)))
-	print("After Undersampling, counts of label 'Toxic Class': {}".format(sum(Y_train_underSampled[j] == 0)))
+	#X_train_underSampled = X_train_underSampled.dropna()
+	print("After Undersampling, counts of label "+j+": {}".format(sum(Y_train_underSampled[j] == 1)))
+	print("After Undersampling, counts of label "+j+": {}".format(sum(Y_train_underSampled[j] == 0)))
 	SupportVectorModel = SVC(kernel = 'rbf', C = 0.1, cache_size = 10000.0, decision_function_shape = 'ovo')
-	FittedSVModel = SupportVectorModel.fit(X_train_underSampledList, Y_train_underSampled[j])
+	X_train_underSampledList.to_csv('trainResult.csv', sep = ',', header = True)
+	Y_train_underSampled.to_csv('testResult.csv', sep = ',', header = True)
+	FittedSVModel = SupportVectorModel.fit(X_train_underSampledList, Y_train_underSampled_List)
 	crossValidationScoreforSV = cross_val_score(SupportVectorModel, X_train_underSampledList, Y_train_underSampled[j], cv = 5)
 	print('Cross Validation Score Support Vector', crossValidationScoreforSV, np.mean(crossValidationScoreforSV))
 
